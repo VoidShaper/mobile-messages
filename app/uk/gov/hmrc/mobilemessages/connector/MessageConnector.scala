@@ -56,7 +56,7 @@ trait MessageConnector extends SessionCookieEncryptionSupport {
     import RestFormats.dateTimeWrite
 
     def post: Future[RenderMessageLocation] = {
-      Logger.info(s"messageBaseUrl $messageBaseUrl - url $url - Full URL is " + s"$messageBaseUrl$url")
+      Logger.debug(s"messageBaseUrl $messageBaseUrl - url $url - Full URL is " + s"$messageBaseUrl$url")
 
       http.POST[JsObject, RenderMessageLocation](s"$messageBaseUrl$url", Json.obj("readTime" -> now))
         .recover {
