@@ -23,22 +23,23 @@ import play.api.libs.json.{JsValue, Json}
 import play.api.test.FakeRequest
 import play.api.test.Helpers._
 import play.twirl.api.Html
+import uk.gov.hmrc.crypto.{Decrypter, Encrypter}
+import uk.gov.hmrc.domain.{Nino, SaUtr}
 import uk.gov.hmrc.mobilemessages.config.MicroserviceAuditConnector
 import uk.gov.hmrc.mobilemessages.connector.{AuthConnector, Authority, MessageConnector}
 import uk.gov.hmrc.mobilemessages.controllers.MobileMessagesController
 import uk.gov.hmrc.mobilemessages.controllers.action.{AccountAccessControl, AccountAccessControlCheckAccessOff, AccountAccessControlWithHeaderCheck}
 import uk.gov.hmrc.mobilemessages.domain.{Accounts, MessageHeader, ReadTimeUrl}
 import uk.gov.hmrc.mobilemessages.services.{LiveMobileMessagesService, MobileMessagesService, SandboxMobileMessagesService}
-import uk.gov.hmrc.time.DateTimeUtils
-import uk.gov.hmrc.domain.{Nino, SaUtr}
 import uk.gov.hmrc.play.audit.http.connector.{AuditConnector, AuditResult}
 import uk.gov.hmrc.play.auth.microservice.connectors.ConfidenceLevel
 import uk.gov.hmrc.play.http._
+import uk.gov.hmrc.time.DateTimeUtils
 
 import scala.concurrent.{ExecutionContext, Future}
 
 
-class TestAuthConnector(nino: Option[Nino], saUtr:Option[SaUtr]) extends AuthConnector {
+class TestAuthConnector(nino: Option[Nino], saUtr: Option[SaUtr]) extends AuthConnector {
   override val serviceUrl: String = "someUrl"
 
   override def serviceConfidenceLevel: ConfidenceLevel = ???
@@ -50,7 +51,7 @@ class TestAuthConnector(nino: Option[Nino], saUtr:Option[SaUtr]) extends AuthCon
   override def grantAccess()(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[Authority] = Future(Authority(nino.getOrElse(throw new Exception("Invalid nino")), ConfidenceLevel.L200, "some-auth-id"))
 }
 
-class TestMessageConnector(result:Seq[MessageHeader], html:Html) extends MessageConnector {
+class TestMessageConnector(result: Seq[MessageHeader], html: Html) extends MessageConnector {
 
   override def http: HttpGet with HttpPost = ???
 
@@ -67,11 +68,11 @@ class TestMessageConnector(result:Seq[MessageHeader], html:Html) extends Message
   override val id: String = "id"
 }
 
-class TestMobileMessagesService(testAuthConnector:TestAuthConnector, mobileMessageConnector:MessageConnector) extends LiveMobileMessagesService {
-  var saveDetails:Map[String, String]=Map.empty
+class TestMobileMessagesService(testAuthConnector: TestAuthConnector, mobileMessageConnector: MessageConnector) extends LiveMobileMessagesService {
+  var saveDetails: Map[String, String] = Map.empty
 
-  override def audit(service: String, details: Map[String, String])(implicit hc: HeaderCarrier, ec : ExecutionContext) = {
-    saveDetails=details
+  override def audit(service: String, details: Map[String, String])(implicit hc: HeaderCarrier, ec: ExecutionContext) = {
+    saveDetails = details
     Future.successful(AuditResult.Success)
   }
 
@@ -84,7 +85,7 @@ class TestAccessCheck(testAuthConnector: TestAuthConnector) extends AccountAcces
   override val authConnector: AuthConnector = testAuthConnector
 }
 
-class TestAccountAccessControlWithAccept(testAccessCheck:AccountAccessControl) extends AccountAccessControlWithHeaderCheck {
+class TestAccountAccessControlWithAccept(testAccessCheck: AccountAccessControl) extends AccountAccessControlWithHeaderCheck {
   override val accessControl: AccountAccessControl = testAccessCheck
 }
 
@@ -100,23 +101,24 @@ trait Setup {
   val now = DateTimeUtils.now
   val messages =
     s"""[{"id":"543e8c6001000001003e4a9e","subject":"You have a new tax statement","validFrom":"${now.minusDays(3).toLocalDate}","readTime":${now.minusDays(1).getMillis},"readTimeUrl":"/message/sa/${saUtrVal.value}/543e8c6001000001003e4a9e/read-time","sentInError":false},
-       |{"id":"643e8c5f01000001003e4a8f","subject":"Stopping Self Assessment","validFrom":"${now.toLocalDate}","readTimeUrl":"/message/sa/${saUtrVal.value}/643e8c5f01000001003e4a8f/read-time","sentInError":false}]""".stripMargin
+        |{"id":"643e8c5f01000001003e4a8f","subject":"Stopping Self Assessment","validFrom":"${now.toLocalDate}","readTimeUrl":"/message/sa/${saUtrVal.value}/643e8c5f01000001003e4a8f/read-time","sentInError":false}]""".stripMargin
 
   lazy val html = Html.apply("<div>some snippet</div>")
 
 
-  val messageHeader = MessageHeader("someId",
-    subject="someSubject",
-    validFrom =  LocalDate.now(),
-    readTime= None,
-    readTimeUrl="someUrl",
-    sentInError=false)
-  val messageHeaderList = Seq(messageHeader, messageHeader.copy(id="id2"), messageHeader.copy(id="id3"))
+  val messageHeader = MessageHeader(
+    "someId",
+    subject = "someSubject",
+    validFrom = LocalDate.now(),
+    readTime = None,
+    sentInError = false
+  )
+  val messageHeaderList = Seq(messageHeader, messageHeader.copy(id = "id2"), messageHeader.copy(id = "id3"))
 
   val acceptHeader = "Accept" -> "application/vnd.hmrc.1.0+json"
   val emptyRequest = FakeRequest()
 
-  def fakeRequest(body:JsValue) = FakeRequest(POST, "url").withBody(body)
+  def fakeRequest(body: JsValue) = FakeRequest(POST, "url").withBody(body)
     .withHeaders("Content-Type" -> "application/json")
 
   val emptyRequestWithAcceptHeader = FakeRequest().withHeaders(acceptHeader)
@@ -131,9 +133,10 @@ trait Setup {
   val testMMService = new TestMobileMessagesService(authConnector, messageConnector)
 
   object sandbox extends SandboxMobileMessagesService {
-      implicit val dateTime = now
-      val saUtr = saUtrVal
+    implicit val dateTime = now
+    val saUtr = saUtrVal
   }
+
   val testSandboxPersonalIncomeService = sandbox
 
 
@@ -146,6 +149,7 @@ trait Success extends Setup {
     override val service: MobileMessagesService = testMMService
     override val accessControl: AccountAccessControlWithHeaderCheck = testCompositeAction
     override implicit val ec: ExecutionContext = ExecutionContext.global
+    override val encrypter: Encrypter with Decrypter = ???
   }
 }
 
@@ -157,13 +161,14 @@ trait SuccessWithMessages extends Setup {
     override val service: MobileMessagesService = testMMService
     override val accessControl: AccountAccessControlWithHeaderCheck = testCompositeAction
     override implicit val ec: ExecutionContext = ExecutionContext.global
+    override val encrypter: Encrypter with Decrypter = ???
   }
 }
 
 
 trait AuthWithoutNino extends Setup {
 
-  override val authConnector =  new TestAuthConnector(None, None) {
+  override val authConnector = new TestAuthConnector(None, None) {
     override def grantAccess()(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[Authority] = Future.failed(new Upstream4xxResponse("Error", 401, 401))
   }
 
@@ -174,6 +179,7 @@ trait AuthWithoutNino extends Setup {
     override val service: MobileMessagesService = testMMService
     override val accessControl: AccountAccessControlWithHeaderCheck = testCompositeAction
     override implicit val ec: ExecutionContext = ExecutionContext.global
+    override val encrypter: Encrypter with Decrypter = ???
   }
 
 }
@@ -181,7 +187,7 @@ trait AuthWithoutNino extends Setup {
 
 trait AuthWithLowCL extends Setup {
 
-  override val authConnector =  new TestAuthConnector(None, None) {
+  override val authConnector = new TestAuthConnector(None, None) {
     override def grantAccess()(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[Authority] = Future.failed(new ForbiddenException("Error"))
   }
 
@@ -192,6 +198,7 @@ trait AuthWithLowCL extends Setup {
     override val service: MobileMessagesService = testMMService
     override val accessControl: AccountAccessControlWithHeaderCheck = testCompositeAction
     override implicit val ec: ExecutionContext = ExecutionContext.global
+    override val encrypter: Encrypter with Decrypter = ???
   }
 
 }
@@ -203,5 +210,6 @@ trait SandboxSuccess extends Setup {
     override val service: MobileMessagesService = testSandboxPersonalIncomeService
     override val accessControl: AccountAccessControlWithHeaderCheck = sandboxCompositeAction
     override implicit val ec: ExecutionContext = ExecutionContext.global
+    override val encrypter: Encrypter with Decrypter = ???
   }
 }

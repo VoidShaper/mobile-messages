@@ -18,10 +18,13 @@ package uk.gov.hmrc.mobilemessages.connector
 
 import java.net.URLEncoder
 import java.util.UUID
+
 import org.apache.commons.codec.CharEncoding
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.Play._
+import uk.gov.hmrc.mobilemessages.connector.model.MessageServiceHeadersResponse
+import uk.gov.hmrc.mobilemessages.domain.MessageHeader
 import uk.gov.hmrc.play.config.ServicesConfig
 import uk.gov.hmrc.play.http.logging.{Authorization, SessionId}
 
@@ -30,7 +33,7 @@ trait MessageConnector extends SessionCookieEncryptionSupport {
 
   import play.api.libs.json.{JsObject, Json}
   import uk.gov.hmrc.domain.SaUtr
-  import uk.gov.hmrc.mobilemessages.domain.{MessageHeader, RenderMessageLocation}
+  import uk.gov.hmrc.mobilemessages.domain.RenderMessageLocation
   import RenderMessageLocation.{formats, toUrl}
   import play.twirl.api.Html
   import uk.gov.hmrc.play.controllers.RestFormats
@@ -41,16 +44,16 @@ trait MessageConnector extends SessionCookieEncryptionSupport {
   def http: HttpGet with HttpPost
 
   val messageBaseUrl: String
-  val provider :String
-  val token:String
-  val id:String
+  val provider: String
+  val token: String
+  val id: String
 
   def now: DateTime
 
-  private val returnReadAndUnreadMessages = "Both"
-
-  def messages(utr: SaUtr)(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[Seq[MessageHeader]] =
-    http.GET[Seq[MessageHeader]](s"$messageBaseUrl/message/sa/$utr?read=$returnReadAndUnreadMessages")
+  def messages(utr: SaUtr)(implicit hc: HeaderCarrier, ec: ExecutionContext): Future[Seq[MessageHeader]] = {
+    http.GET[MessageServiceHeadersResponse](s"$messageBaseUrl/messages").
+      map(messageHeaders => messageHeaders.items)
+  }
 
   def readMessageContent(url: String)(implicit hc: HeaderCarrier, ec: ExecutionContext, auth: Option[Authority]): Future[Html] = {
     import RestFormats.dateTimeWrite
@@ -60,19 +63,19 @@ trait MessageConnector extends SessionCookieEncryptionSupport {
 
       http.POST[JsObject, RenderMessageLocation](s"$messageBaseUrl$url", Json.obj("readTime" -> now))
         .recover {
-        case ex@uk.gov.hmrc.play.http.Upstream4xxResponse(message, 409, _, _) =>
-          Logger.info("409 response message " + message)
-          val index = message.indexOf("{")
-          if (index == -1) throw ex
-          Json.parse(message.substring(index, message.length - 1)).as[RenderMessageLocation]
+          case ex@uk.gov.hmrc.play.http.Upstream4xxResponse(message, 409, _, _) =>
+            Logger.info("409 response message " + message)
+            val index = message.indexOf("{")
+            if (index == -1) throw ex
+            Json.parse(message.substring(index, message.length - 1)).as[RenderMessageLocation]
 
-        case ex: Throwable =>
-          Logger.info("Unknown exception " + ex)
-          throw ex
-      }
+          case ex: Throwable =>
+            Logger.info("Unknown exception " + ex)
+            throw ex
+        }
     }
 
-    def render(renderMessageLocation:RenderMessageLocation, hc:HeaderCarrier): Future[Html] = {
+    def render(renderMessageLocation: RenderMessageLocation, hc: HeaderCarrier): Future[Html] = {
       val authToken: Authorization = hc.authorization.getOrElse(throw new IllegalArgumentException("Failed to find auth header!"))
       val userId = auth.getOrElse(throw new IllegalArgumentException("Failed to find the user!"))
 
@@ -91,9 +94,9 @@ trait MessageConnector extends SessionCookieEncryptionSupport {
     }
 
     for {
-        renderMessageLocation <- post
-        resp <- render(renderMessageLocation, hc)
-    } yield(resp)
+      renderMessageLocation <- post
+      resp <- render(renderMessageLocation, hc)
+    } yield (resp)
 
   }
 }
@@ -108,7 +111,9 @@ object MessageConnector extends MessageConnector with ServicesConfig {
   override lazy val messageBaseUrl: String = baseUrl("message")
 
   override def now: DateTime = DateTimeUtils.now
-  def exception(key:String) = throw new Exception(s"Failed to find $key")
+
+  def exception(key: String) = throw new Exception(s"Failed to find $key")
+
   override lazy val provider = current.configuration.getString("provider").getOrElse(exception("provider"))
   override lazy val token = current.configuration.getString("token").getOrElse(exception("token"))
   override lazy val id = current.configuration.getString("id").getOrElse(exception("id"))
