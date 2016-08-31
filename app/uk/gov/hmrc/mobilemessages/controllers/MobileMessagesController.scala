@@ -16,6 +16,7 @@
 
 package uk.gov.hmrc.mobilemessages.controllers
 
+import com.sun.xml.internal.ws.api.message.MessageHeaders
 import play.api.Logger
 import play.api.libs.json._
 import play.api.mvc.BodyParsers
@@ -23,7 +24,7 @@ import play.twirl.api.Html
 import uk.gov.hmrc.api.controllers._
 import uk.gov.hmrc.crypto.{CryptoWithKeysFromConfig, Decrypter, Encrypter}
 import uk.gov.hmrc.mobilemessages.controllers.action.{AccountAccessControlCheckAccessOff, AccountAccessControlWithHeaderCheck}
-import uk.gov.hmrc.mobilemessages.controllers.model.MessageHeadResponseBody
+import uk.gov.hmrc.mobilemessages.controllers.model.{MessageHeadResponseBody, MessageHeadResponseBody$}
 import uk.gov.hmrc.mobilemessages.domain.{MessageHeader, ReadTimeUrl}
 import uk.gov.hmrc.mobilemessages.services.{LiveMobileMessagesService, MobileMessagesService, SandboxMobileMessagesService}
 import uk.gov.hmrc.play.http.HeaderCarrier
